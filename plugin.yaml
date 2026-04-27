@@ -1,0 +1,19 @@
+name: hook-monitor
+version: 1.0.0
+description: "Project-local plugin that registers every VALID_HOOKS callback and logs hook kwargs to ~/hermesmonitor/hook.log."
+author: local
+provides_hooks:
+  - pre_tool_call
+  - post_tool_call
+  - transform_terminal_output
+  - transform_tool_result
+  - pre_llm_call
+  - post_llm_call
+  - pre_api_request
+  - post_api_request
+  - on_session_start
+  - on_session_end
+  - on_session_finalize
+  - on_session_reset
+  - subagent_stop
+  - pre_gateway_dispatch
