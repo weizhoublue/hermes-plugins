@@ -22,7 +22,7 @@ from hermes_cli.plugins import VALID_HOOKS
 
 LOG_PATH = Path("~/hermesmonitor/hook.log").expanduser()
 _WRITE_LOCK = threading.Lock()
-_MAX_SERIALIZE_DEPTH = 6
+_MAX_LOGGED_STRING_CHARS = 100
 _HOOK_NAMES = (
     "pre_tool_call",
     "post_tool_call",
@@ -53,18 +53,29 @@ def _fallback_repr(value: Any) -> str:
         return f"<unreprable {_type_name(value)}>"
 
 
-def _serialize(value: Any, *, depth: int = 0, seen: set[int] | None = None) -> Any:
+def _truncate_logged_string(value: str) -> str:
+    if len(value) <= _MAX_LOGGED_STRING_CHARS:
+        return value
+
+    return f"{value[:_MAX_LOGGED_STRING_CHARS]}...total {len(value)} chars"
+
+
+def _serialize(
+    value: Any,
+    *,
+    seen: set[int] | None = None,
+) -> Any:
     if seen is None:
         seen = set()
 
-    if value is None or isinstance(value, (str, int, float, bool)):
+    if value is None or isinstance(value, (int, float, bool)):
         return value
+
+    if isinstance(value, str):
+        return _truncate_logged_string(value)
 
     if isinstance(value, Path):
         return str(value)
-
-    if depth >= _MAX_SERIALIZE_DEPTH:
-        return {"__type__": _type_name(value), "__repr__": _fallback_repr(value)}
 
     obj_id = id(value)
     if obj_id in seen:
@@ -73,17 +84,14 @@ def _serialize(value: Any, *, depth: int = 0, seen: set[int] | None = None) -> A
     if isinstance(value, dict):
         seen.add(obj_id)
         try:
-            return {
-                str(key): _serialize(item, depth=depth + 1, seen=seen)
-                for key, item in value.items()
-            }
+            return {str(key): _serialize(item, seen=seen) for key, item in value.items()}
         finally:
             seen.discard(obj_id)
 
     if isinstance(value, (list, tuple, set, frozenset)):
         seen.add(obj_id)
         try:
-            return [_serialize(item, depth=depth + 1, seen=seen) for item in value]
+            return [_serialize(item, seen=seen) for item in value]
         finally:
             seen.discard(obj_id)
 
@@ -94,7 +102,6 @@ def _serialize(value: Any, *, depth: int = 0, seen: set[int] | None = None) -> A
             for field in fields(value):
                 payload[field.name] = _serialize(
                     getattr(value, field.name),
-                    depth=depth + 1,
                     seen=seen,
                 )
             return payload
@@ -108,7 +115,7 @@ def _serialize(value: Any, *, depth: int = 0, seen: set[int] | None = None) -> A
             return {"__type__": _type_name(value), "__repr__": _fallback_repr(value)}
         return {
             "__type__": _type_name(value),
-            "data": _serialize(dumped, depth=depth + 1, seen=seen),
+            "data": _serialize(dumped, seen=seen),
         }
 
     return {"__type__": _type_name(value), "__repr__": _fallback_repr(value)}
